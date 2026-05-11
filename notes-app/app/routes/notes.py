@@ -1,7 +1,6 @@
-import sqlite3
 from fastapi import APIRouter, HTTPException, Query
 from app.models import Note, NoteResponse, DeleteNote, SortField
-from app.storage import insert_note, get_note_by_id, update_note, delete_note, get_all_notes
+from app.sqlalc import insert_note, get_note_by_id, update_note, delete_note, get_all_notes
 from datetime import datetime
 from typing import Annotated
 
@@ -20,7 +19,7 @@ async def root():
         response_model_exclude_none=True, 
         status_code=201)
 def create_note_route(note: Note):
-    note_id = insert_note((note.title, note.content, datetime.now()))
+    note_id = insert_note(note.title, note.content)
     if note_id:
         return get_note_by_id(note_id)
     raise HTTPException(500, "Note creation failed!")
@@ -41,7 +40,7 @@ def get_note(note_id: int):
 def update_note_route(note_id: int, note: Note):
     existing_note = get_note_by_id(note_id)
     if existing_note:
-        update_note((note.title, note.content, datetime.now(), note_id))
+        update_note(note_id, note.title, note.content)
         return get_note_by_id(note_id)
     raise HTTPException(404, "Note not found!")
 
