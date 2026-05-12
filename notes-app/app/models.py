@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, AfterValidator
+from pydantic import BaseModel, Field, AfterValidator, ConfigDict
 from enum import Enum
 from datetime import datetime
 from typing import Annotated
@@ -14,6 +14,7 @@ class Note(BaseModel):
     content: Annotated[str, AfterValidator(check_string)] = Field(..., min_length=1, max_length=1000)
 
 class NoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     title: str
     content: str
@@ -27,3 +28,8 @@ class DeleteNote(BaseModel):
 class SortField(str, Enum):
     createdAt = "createdAt"
     updatedAt = "updatedAt"
+
+class CursorPaginationResponse(BaseModel):
+    data: list[NoteResponse]
+    has_next: bool
+    cursor_id: int | None=None

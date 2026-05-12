@@ -1,137 +1,101 @@
-import sqlite3
+from sqlalchemy import create_engine, String, Integer, DateTime, select, or_
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Session
+from datetime import datetime
 
-DB_FILE="my.db"
+# create engine
+engine = create_engine("sqlite:///notes.db")
 
-def get_db():
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        conn.row_factory = sqlite3.Row
-        return conn
-    except sqlite3.Error as e:
-        print(f"Error connecting to database: {e}")
-        return None
+# create Base
+class Base(DeclarativeBase):
+    pass
+
+# create models
+class Note(Base):
+    __tablename__ = "notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(50),nullable=False)
+    content: Mapped[str] = mapped_column(String(1000),nullable=False)
+    createdAt: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updatedAt: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     
-def create_table():
-    conn = get_db()
-    if conn:
-        table_sql = """CREATE TABLE IF NOT EXISTS notes(
-        id INTEGER PRIMARY KEY,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        createdAt DATETIME NOT NULL,
-        updatedAt DATETIME
-        )"""
+# create tables
+Base.metadata.create_all(engine)
 
-        try:
-            cursor = conn.cursor()
-            cursor.execute(table_sql)
-            conn.commit()
-            print("Table created successfully!")
-        except sqlite3.Error as e:
-            print(f"Failed to create tables: {e}")
-        finally:
-            conn.close()
+# create session
+session = Session(engine)
 
-def insert_note(note):
-    conn = get_db()
-    if conn:
-        create_table()
-        insert_sql = """INSERT INTO notes(title, content, createdAt)
-        VALUES (?,?,?)"""
+# create a note
+def insert_note(title: str, content: str):
+    note = Note(title=title, content=content, createdAt=datetime.now())
+    session.add(note)
+    session.commit()
+    return note.id
 
-        try:
-            cursor = conn.cursor()
-            cursor.execute(insert_sql, note)
-            conn.commit()
-            print("Data inserted!")
-            return cursor.lastrowid
-        except sqlite3.Error as e:
-            print(f"Error inserting: {e}")
-        finally:
-            conn.close()
+def get_note_by_id(note_id: int):
+    note = session.get(Note, note_id)
+    if note is None:
+        return None
+    return note
 
-def get_note_by_id(note_id):
-    conn = get_db()
-    if conn:
-        sql = """SELECT * FROM notes WHERE id = ?"""
+def update_note(note_id: int, title: str|None=None, content: str|None=None):
+    note = session.get(Note, note_id)
+    if note is None:
+        return None
 
-        try:
-            cursor = conn.cursor()
-            cursor.execute(sql, (note_id,))
-            row = cursor.fetchone()
-            if row:
-                return dict(row)
-            return None
-        except sqlite3.Error as e:
-            print(f"Error fetching: {e}")
-        finally:
-            conn.close()
+    if title is not None:
+        note.title = title
 
-def update_note(note_tuple):
-    # note_tuple: (title, content, updatedAt, id) 
-    conn = get_db()
-    if conn:
-        sql = """UPDATE notes
-        SET title = ?, content = ?, updatedAt = ?
-        WHERE id = ?"""
+    if content is not None:
+        note.content = content
 
-        try:
-            cursor = conn.cursor()
-            cursor.execute(sql, note_tuple)
-            conn.commit()
-            print("Data updated!")
-        except sqlite3.Error as e:
-            print(f"Error while updating: {e}")
-        finally:
-            conn.close()
+    note.updatedAt = datetime.now()
+    session.commit()
+    return note
 
-def delete_note(note_id):
-    conn = get_db()
-    if conn:
-        sql = """DELETE FROM notes WHERE ID = ?"""
+def delete_note(note_id: int):
+    note = session.get(Note, note_id)
+    if note is None:
+        return None
+    session.delete(note)
+    session.commit()
+    return note
 
-        try:
-            deleted_note = get_note_by_id(note_id)
-            if deleted_note:
-                cursor = conn.cursor()
-                cursor.execute(sql, (note_id,))
-                conn.commit()
-                return deleted_note
-            else:
-                return None
-        except sqlite3.Error as e:
-            print(f"Error deleting: {e}")
-        finally:
-            conn.close()
+def get_all_notes(
+        search: str | None=None, sort: str | None=None,
+        cursor_id: int | None=None, limit: int = 3):
+    stmt = select(Note).order_by(Note.id.desc())
 
+    if cursor_id is not None:
+        stmt = stmt.where(Note.id <= cursor_id)
 
-def get_all_notes(search:str|None=None, sort:str|None=None, limit=10, skip=0):
-    conn = get_db()
-    if conn:
-        sql = "SELECT * FROM notes"
-        params = []
-        if search:
-            sql += " WHERE title LIKE ?"
-            params.append(search)
-        if sort:
-            sql += f" ORDER BY {sort} DESC"
-        sql += f" LIMIT ? OFFSET ?"
-        params.append(limit)
-        params.append(skip)
+    if search: 
+        stmt = stmt.where(
+            or_(
+                Note.title.ilike(f"%{search}%"), 
+                Note.content.ilike(f"%{search}%")
+            )
+        )
 
-        try:
-            cursor = conn.cursor()
-            cursor.execute(sql,params)
-            rows = cursor.fetchall()
-            # [] is still a valid result. not a missing resource unlike in 
-            # get_note_by_id (cus that simply doesnt exist)
-            # but here table might be empty but it still exists - not a missing resource
-            # no need of if rows, just directly returning the list of dicts
-            return [dict(row) for row in rows] 
-        except sqlite3.Error as e:
-            print(f"Error fetching rows: {e}")
-        finally:
-            conn.close()
+    if sort:
+        stmt = stmt.order_by(getattr(Note, sort).desc())
 
-            
-        
+    stmt = stmt.limit(limit+1)
+    notes = session.execute(stmt).scalars().all()
+
+    has_next = False
+    if len(notes)>limit:
+        has_next = True
+        cursor_id = notes[-1].id
+        notes = notes[:-1]
+    else:
+        cursor_id = None
+
+    return {
+        "data": notes,
+        "has_next": has_next,
+        "cursor_id": cursor_id
+    }
+    

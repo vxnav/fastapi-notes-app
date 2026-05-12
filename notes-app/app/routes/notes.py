@@ -1,8 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
-from app.models import Note, NoteResponse, DeleteNote, SortField
-from app.sqlalc import insert_note, get_note_by_id, update_note, delete_note, get_all_notes
-from datetime import datetime
-from typing import Annotated
+from app.models import Note, NoteResponse, DeleteNote, SortField, CursorPaginationResponse
+from app.storage import insert_note, get_note_by_id, update_note, delete_note, get_all_notes
 
 router = APIRouter()
 
@@ -55,16 +53,14 @@ def delete_note_route(note_id: int):
     raise HTTPException(404, "Note not found!")
 
 # read all notes
-@router.get("/notes", 
-         response_model=list[NoteResponse],
-         response_model_exclude_none=True)
+@router.get("/notes",
+            response_model=CursorPaginationResponse,
+            response_model_exclude_none=True)
 def get_all_notes_route(
-    search: str | None = None,
-    sort: SortField | None = None,
-    limit: Annotated[int, Query(gt=0, lt=100)] = 10,
-    skip: Annotated[int, Query(ge=0)] = 0
+        search: str | None=None, sort: SortField | None=None,
+        cursor_id: int | None=None, limit: int = 3
 ):
-    notes = get_all_notes(search, sort.value if sort else None, limit, skip)
+    notes = get_all_notes(search, sort, cursor_id, limit)
     if notes is None:
         raise HTTPException(500, "Failed to fetch notes!")
     return notes
