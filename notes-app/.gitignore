@@ -3,3 +3,5 @@ notes.db
 __pycache__/
 venv/
 .env
+test.py
+auth_manual.py
