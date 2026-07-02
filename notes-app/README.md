@@ -6,6 +6,9 @@ My first backend project. Built it to understand how APIs, authentication, datab
 
 This started as a simple CRUD project but I gradually expanded it to learn how authentication and authorization work in backend applications. I first implemented JWT manually to understand how it works internally, and then switched to PyJWT for the final implementation.
 
+## Live On:
+https://fastapi-notes-api-lznq.onrender.com/docs
+
 ## Features
 
 - User registration
